@@ -25,10 +25,11 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
     def initializer(self, packet):
         if packet.dest not in self.dest_packetSize:
             self.dest_packetSize[packet.dest] = 0
-        if packet.dest not in self.dest_block:
-            self.dest_block[packet.dest] = ""
         if packet.dest not in self.dest_packetList:
             self.dest_packetList[packet.dest] = []
+        if packet.dest not in self.dest_block:
+            self.dest_block[packet.dest] = ""
+
 
     def receive(self, packet):
         self.initializer(packet)
@@ -73,7 +74,7 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
         self.dest_block[packet.dest] += packet.payload
         self.dest_packetList[packet.dest].append(packet)
         if packet.is_fin:
-            # if done, lets send what we have so far
+            # lets send what we have so far
             hash = utils.get_hash(self.dest_block[packet.dest])
             if hash in self.hash_packetList:
                 compressed_packet = tcp_packet.Packet(packet.src, packet.dest, False, False, hash)
