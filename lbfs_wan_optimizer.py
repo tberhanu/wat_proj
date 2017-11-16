@@ -32,9 +32,9 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
             self.dest_payloads[packet.dest] += packet.payload
             diff = len(self.dest_payloads[packet.dest]) - 48
             hash = utils.get_hash(self.dest_payloads[packet.dest][diff:])
-            last_n_bits = utils.get_last_n_bits(hash, 13)
+            last_bits = utils.get_last_n_bits(hash, 13)
 
-            if packet.is_fin or len(self.dest_payloads[packet.dest]) >= 48 and last_n_bits == self.GLOBAL_MATCH_BITSTRING:
+            if packet.is_fin or len(self.dest_payloads[packet.dest]) >= 48 and last_bits == self.GLOBAL_MATCH_BITSTRING:
 
                 hash = utils.get_hash(self.dest_payloads[packet.dest])
                 self.hash_payloads[hash] = self.dest_payloads[packet.dest]
@@ -55,8 +55,8 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
                 end = max(48, diff)
                 while end <= len(self.dest_payloads[packet.dest]):
                     hash = utils.get_hash(self.dest_payloads[packet.dest][end - 48:end])
-                    last_n_bits = utils.get_last_n_bits(hash, 13)
-                    if last_n_bits == self.GLOBAL_MATCH_BITSTRING:
+                    last_bits = utils.get_last_n_bits(hash, 13)
+                    if last_bits == self.GLOBAL_MATCH_BITSTRING:
                         hash = utils.get_hash(self.dest_payloads[packet.dest][start:end])
                         self.send_code(packet, self.wan_port, self.dest_payloads[packet.dest][start:end], key=hash)
 

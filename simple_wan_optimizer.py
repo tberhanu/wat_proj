@@ -22,21 +22,22 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
         self.dest_block = {}
 
 
-    def initializer(self, packet):
-        if packet.dest not in self.dest_packetSize:
+    def initializer(self, packet, flag):
+        if flag or packet.dest not in self.dest_packetSize:
             self.dest_packetSize[packet.dest] = 0
-        if packet.dest not in self.dest_packetList:
+        if flag or packet.dest not in self.dest_packetList:
             self.dest_packetList[packet.dest] = []
-        if packet.dest not in self.dest_block:
+        if flag or packet.dest not in self.dest_block:
             self.dest_block[packet.dest] = ""
 
 
     def receive(self, packet):
-        self.initializer(packet)
+        self.initializer(packet, False)
         if packet.is_raw_data:
             self.handle_raw_data(packet)
         else:
-            self.handle_coded_data(packet)
+            self.send_code(packet, self.hash_packetList[packet.payload])
+            self.initializer(packet, True)
 
     def handle_raw_data(self, packet):
         diff = self.dest_packetSize[packet.dest] + packet.size() - self.BLOCK_SIZE
@@ -48,16 +49,16 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
 
     def handle_full_block(self, packet, diff):
 
-        index =  self.BLOCK_SIZE - self.dest_packetSize[packet.dest]
-        if index == packet.size():
-            self.dest_packetList[packet.dest].append(tcp_packet.Packet(packet.src, packet.dest, True, packet.is_fin, packet.payload[:index]))
+        dif =  self.BLOCK_SIZE - self.dest_packetSize[packet.dest]
+        if dif == packet.size():
+            self.dest_packetList[packet.dest].append(tcp_packet.Packet(packet.src, packet.dest, True, packet.is_fin, packet.payload[:dif]))
         else:
-            self.dest_packetList[packet.dest].append(tcp_packet.Packet(packet.src, packet.dest, True, False, packet.payload[:index]))
-        self.dest_block[packet.dest] = self.dest_block[packet.dest] + packet.payload[:index]
+            self.dest_packetList[packet.dest].append(tcp_packet.Packet(packet.src, packet.dest, True, False, packet.payload[:dif]))
+        self.dest_block[packet.dest] = self.dest_block[packet.dest] + packet.payload[:dif]
         hash = utils.get_hash(self.dest_block[packet.dest])
         if hash in self.hash_packetList.keys():
-            compressed_packet = tcp_packet.Packet(packet.src, packet.dest, False, packet.is_fin, hash)
-            self.send(compressed_packet, self.wan_port)
+            comp_packet = tcp_packet.Packet(packet.src, packet.dest, False, packet.is_fin, hash)
+            self.send(comp_packet, self.wan_port)
         else:
             self.hash_packetList[hash] = self.dest_packetList[packet.dest]
             self.send_code(packet, self.dest_packetList[packet.dest])
@@ -66,8 +67,8 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
         self.dest_block[packet.dest] = ""
         self.dest_packetList[packet.dest] = []
         if diff != 0:
-            self.dest_block[packet.dest] = packet.payload[index:]
-            self.dest_packetList[packet.dest].append(tcp_packet.Packet(packet.src, packet.dest, True, packet.is_fin, packet.payload[index:]))
+            self.dest_block[packet.dest] = packet.payload[dif:]
+            self.dest_packetList[packet.dest].append(tcp_packet.Packet(packet.src, packet.dest, True, packet.is_fin, packet.payload[dif:]))
 
     def handle_partial_block(self, packet):
         self.dest_packetSize[packet.dest] += packet.size()
@@ -77,29 +78,21 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
             # lets send what we have so far
             hash = utils.get_hash(self.dest_block[packet.dest])
             if hash in self.hash_packetList:
-                compressed_packet = tcp_packet.Packet(packet.src, packet.dest, False, False, hash)
-                self.send(compressed_packet, self.wan_port)
+                comp_packet = tcp_packet.Packet(packet.src, packet.dest, False, False, hash)
+                self.send(comp_packet, self.wan_port)
             else:
                 self.hash_packetList[hash] = self.dest_packetList[packet.dest]
                 self.send_code(packet, self.dest_packetList[packet.dest])
-            self.dest_packetSize[packet.dest] = 0
-            self.dest_block[packet.dest] = ""
-            self.dest_packetList[packet.dest] = []
-
-    def handle_coded_data(self, packet):
-        self.send_code(packet, self.hash_packetList[packet.payload])
-        self.dest_packetSize[packet.dest] = 0
-        self.dest_block[packet.dest] = ""
-        self.dest_packetList[packet.dest] = []
+            self.initializer(packet, True)
 
     def send_code(self, packet, packet_lst):
         # Send the packets in the block
         for p in packet_lst:
-            compressed_packet = tcp_packet.Packet(packet.src, packet.dest, p.is_raw_data, p.is_fin, p.payload)
+            comp_packet = tcp_packet.Packet(packet.src, packet.dest, p.is_raw_data, p.is_fin, p.payload)
             if packet.dest in self.address_to_port:
                 # Sending to the clients connected to this middlebox
-                self.send(compressed_packet, self.address_to_port[compressed_packet.dest])
+                self.send(comp_packet, self.address_to_port[comp_packet.dest])
             else:
                 # sending thru the WAN.
-                self.send(compressed_packet, self.wan_port)
+                self.send(comp_packet, self.wan_port)
 
