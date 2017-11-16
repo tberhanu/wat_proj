@@ -31,10 +31,11 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
         srcDest = packet.src + packet.dest
         if packet.is_raw_data:
             self.srcDest_payloads[srcDest] += packet.payload
-            last_n_bits = utils.get_last_n_bits(
-                utils.get_hash(self.srcDest_payloads[srcDest][len(self.srcDest_payloads[srcDest]) - 48:]), 13)
+            diff = len(self.srcDest_payloads[srcDest]) - 48
+            hash = utils.get_hash(self.srcDest_payloads[srcDest][diff:])
+            last_n_bits = utils.get_last_n_bits(hash, 13)
 
-            if len(self.srcDest_payloads[srcDest]) >= 48 and last_n_bits == self.GLOBAL_MATCH_BITSTRING or packet.is_fin:
+            if packet.is_fin or len(self.srcDest_payloads[srcDest]) >= 48 and last_n_bits == self.GLOBAL_MATCH_BITSTRING:
 
                 hash = utils.get_hash(self.srcDest_payloads[srcDest])
                 self.hash_payloads[hash] = self.srcDest_payloads[srcDest]
@@ -52,9 +53,11 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
 
             if len(self.srcDest_payloads[srcDest]) > 48:
                 start = 0
-                end = max(48, len(self.srcDest_payloads[srcDest]) - packet.size())
+                diff = len(self.srcDest_payloads[srcDest]) - packet.size()
+                end = max(48, diff)
                 while end <= len(self.srcDest_payloads[srcDest]):
-                    last_n_bits = utils.get_last_n_bits(utils.get_hash(self.srcDest_payloads[srcDest][end - 48:end]), 13)
+                    hash = utils.get_hash(self.srcDest_payloads[srcDest][end - 48:end])
+                    last_n_bits = utils.get_last_n_bits(hash, 13)
                     if last_n_bits == self.GLOBAL_MATCH_BITSTRING:
                         hash = utils.get_hash(self.srcDest_payloads[srcDest][start:end])
                         self.send_code(packet, self.wan_port, self.srcDest_payloads[srcDest][start:end], key=hash)
@@ -79,7 +82,7 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
             self.send(tcp_packet.Packet(packet.src, packet.dest, False, packet.is_fin, key), dest)
         else:
             if key and not self.hash_payloads.has_key(key):
-                    self.hash_payloads[key] = payload
+                self.hash_payloads[key] = payload
 
             while (len(payload) > utils.MAX_PACKET_SIZE):
                 p = tcp_packet.Packet(packet.src, packet.dest, True, False, payload[:utils.MAX_PACKET_SIZE])
