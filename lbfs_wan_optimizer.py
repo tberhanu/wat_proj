@@ -18,7 +18,7 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
         wan_optimizer.BaseWanOptimizer.__init__(self)
         # Add any code that you like here (but do not add any constructor arguments).
         self.hash_payloads = {}
-        self.srcDest_payloads = collections.defaultdict(str)
+        self.dest_payloads = collections.defaultdict(str)
 
     def receive(self, packet):
         if packet.dest in self.address_to_port:
@@ -28,52 +28,50 @@ class WanOptimizer(wan_optimizer.BaseWanOptimizer):
 
     def handle_directly(self, packet):
         # packet to the client that directly connected with this middlebox
-        srcDest = packet.src + packet.dest
         if packet.is_raw_data:
-            self.srcDest_payloads[srcDest] += packet.payload
-            diff = len(self.srcDest_payloads[srcDest]) - 48
-            hash = utils.get_hash(self.srcDest_payloads[srcDest][diff:])
+            self.dest_payloads[packet.dest] += packet.payload
+            diff = len(self.dest_payloads[packet.dest]) - 48
+            hash = utils.get_hash(self.dest_payloads[packet.dest][diff:])
             last_n_bits = utils.get_last_n_bits(hash, 13)
 
-            if packet.is_fin or len(self.srcDest_payloads[srcDest]) >= 48 and last_n_bits == self.GLOBAL_MATCH_BITSTRING:
+            if packet.is_fin or len(self.dest_payloads[packet.dest]) >= 48 and last_n_bits == self.GLOBAL_MATCH_BITSTRING:
 
-                hash = utils.get_hash(self.srcDest_payloads[srcDest])
-                self.hash_payloads[hash] = self.srcDest_payloads[srcDest]
-                self.send_code(packet, self.address_to_port[packet.dest], self.srcDest_payloads[srcDest])
-                self.srcDest_payloads[srcDest] = ""
+                hash = utils.get_hash(self.dest_payloads[packet.dest])
+                self.hash_payloads[hash] = self.dest_payloads[packet.dest]
+                self.send_code(packet, self.address_to_port[packet.dest], self.dest_payloads[packet.dest])
+                self.dest_payloads[packet.dest] = ""
         else:
-            self.srcDest_payloads[srcDest] = ""
+            self.dest_payloads[packet.dest] = ""
             self.send_code(packet, self.address_to_port[packet.dest], self.hash_payloads[packet.payload])
 
     def handle_indirectly(self, packet):
         # packet indirectly to a client thru another middlebox
         if packet.is_raw_data:
-            srcDest = packet.src + packet.dest
-            self.srcDest_payloads[srcDest] += packet.payload
+            self.dest_payloads[packet.dest] += packet.payload
 
-            if len(self.srcDest_payloads[srcDest]) > 48:
+            if len(self.dest_payloads[packet.dest]) > 48:
                 start = 0
-                diff = len(self.srcDest_payloads[srcDest]) - packet.size()
+                diff = len(self.dest_payloads[packet.dest]) - packet.size()
                 end = max(48, diff)
-                while end <= len(self.srcDest_payloads[srcDest]):
-                    hash = utils.get_hash(self.srcDest_payloads[srcDest][end - 48:end])
+                while end <= len(self.dest_payloads[packet.dest]):
+                    hash = utils.get_hash(self.dest_payloads[packet.dest][end - 48:end])
                     last_n_bits = utils.get_last_n_bits(hash, 13)
                     if last_n_bits == self.GLOBAL_MATCH_BITSTRING:
-                        hash = utils.get_hash(self.srcDest_payloads[srcDest][start:end])
-                        self.send_code(packet, self.wan_port, self.srcDest_payloads[srcDest][start:end], key=hash)
+                        hash = utils.get_hash(self.dest_payloads[packet.dest][start:end])
+                        self.send_code(packet, self.wan_port, self.dest_payloads[packet.dest][start:end], key=hash)
 
-                        self.srcDest_payloads[srcDest] = self.srcDest_payloads[srcDest][end:]
+                        self.dest_payloads[packet.dest] = self.dest_payloads[packet.dest][end:]
                         start = end
                         end += 48
                     else:
                         end += 1
             if packet.is_fin:
-                if len(self.srcDest_payloads[srcDest]) > 0:
-                    hash = utils.get_hash(self.srcDest_payloads[srcDest])
-                    self.send_code(packet, self.wan_port, self.srcDest_payloads[srcDest], key=hash)
+                if len(self.dest_payloads[packet.dest]) > 0:
+                    hash = utils.get_hash(self.dest_payloads[packet.dest])
+                    self.send_code(packet, self.wan_port, self.dest_payloads[packet.dest], key=hash)
                 else:
-                    self.send_code(packet, self.wan_port, self.srcDest_payloads[srcDest])
-                self.srcDest_payloads[srcDest] = ""
+                    self.send_code(packet, self.wan_port, self.dest_payloads[packet.dest])
+                self.dest_payloads[packet.dest] = ""
         else:
             self.send(packet, self.wan_port)
 
